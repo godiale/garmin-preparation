@@ -13,6 +13,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 CREDENTIALS_FILE = "credentials.json"
+PROCESSED_DATES = "processed_dates.txt"
 OUTPUT_IMAGE = "output.jpg"
 GARMIN_BACKUP_PYTHON = "C:\Python27\python.exe"
 GARMIN_BACKUP_FOLDER = "C:\Users\godin\Projects\garmin-backup"
@@ -84,13 +85,32 @@ def send_mail(subject, text):
             s.quit()
 
 
+def is_processed_today():
+    dates = set()
+    if not os.path.isfile(PROCESSED_DATES):
+        return False
+    with open(PROCESSED_DATES, 'r') as f:
+        for line in f:
+            dates.add(dateutil.parser.parse(line).date())
+    today = datetime.date.today()
+    return today in dates
+
+
+def set_processed_today():
+    with open(PROCESSED_DATES, 'a') as f:
+        f.write(str(datetime.date.today()))
+        f.write('\n')
+
+
 if __name__ == "__main__":
-    # update_activities()
-    remaining_kilometers = PREPARATION_GOAL - get_kilometers_done(PREPARATION_START, PREPARATION_END)
-    remaining_days = (PREPARATION_END - datetime.datetime.now()).days
-    per_month_remaining = remaining_kilometers / remaining_days * 30.0
-    status_text = "{0} kilometers remaining ({1} per month)".format(int(round(remaining_kilometers)),
-                                                                    int(round(per_month_remaining)))
-    remaining_text = PREPARATION_TITLE + ": {0} days remaining".format(remaining_days)
-    create_image(status_text)
-    send_mail(remaining_text, status_text)
+    if not is_processed_today():
+        update_activities()
+        remaining_kilometers = PREPARATION_GOAL - get_kilometers_done(PREPARATION_START, PREPARATION_END)
+        remaining_days = (PREPARATION_END - datetime.datetime.now()).days
+        per_month_remaining = remaining_kilometers / remaining_days * 30.0
+        status_text = "{0} kilometers remaining ({1} per month)".format(int(round(remaining_kilometers)),
+                                                                        int(round(per_month_remaining)))
+        remaining_text = PREPARATION_TITLE + ": {0} days remaining".format(remaining_days)
+        create_image(status_text)
+        send_mail(remaining_text, status_text)
+        set_processed_today()
