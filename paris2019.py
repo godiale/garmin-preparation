@@ -6,6 +6,8 @@ import os
 import os.path
 import dateutil.parser
 
+from PIL import Image, ImageFont, ImageDraw, ImageEnhance
+
 GARMIN_CREDENTIALS_FILE = "credentials.json"
 GARMIN_BACKUP_PYTHON = "C:\Python27\python.exe"
 GARMIN_BACKUP_FOLDER = "C:\Users\godin\Projects\garmin-backup"
@@ -41,10 +43,26 @@ def get_remaining_kilometers():
     return kilometers
 
 
+def create_image(kilometers, per_month):
+    img = Image.new('RGB', (900, 200), "white")
+    draw = ImageDraw.Draw(img)
+    text = create_text(kilometers, per_month)
+    draw.text((70, 70),
+              text,
+              font=ImageFont.truetype("arial", 40),
+              fill="red")
+    img.save("output.jpg", "JPEG")
+
+
+def create_text(kilometers, per_month):
+    return "{0} kilometers remaining ({1} per month)".format(int(round(remaining_kilometers)),
+                                                             int(round(per_month_remaining)))
+
+
 if __name__ == "__main__":
-    update_activities()
+    #update_activities()
     remaining_kilometers = get_remaining_kilometers()
     remaining_days = (PREPARATION_END - datetime.datetime.now()).days
     per_month_remaining = remaining_kilometers / remaining_days * 30.0
-    print "{0} kilometers remaining ({1} per month)".format(int(round(remaining_kilometers)),
-                                                            int(round(per_month_remaining)))
+    print create_text(remaining_days, per_month_remaining)
+    create_image(remaining_kilometers, per_month_remaining)
