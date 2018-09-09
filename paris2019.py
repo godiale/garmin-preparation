@@ -2,67 +2,95 @@ import glob
 import json
 import datetime
 import subprocess
+import smtplib
 import os
 import os.path
 import dateutil.parser
 
-from PIL import Image, ImageFont, ImageDraw, ImageEnhance
+from PIL import Image, ImageFont, ImageDraw
+from email.mime.image import MIMEImage
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
-GARMIN_CREDENTIALS_FILE = "credentials.json"
+CREDENTIALS_FILE = "credentials.json"
+OUTPUT_IMAGE = "output.jpg"
 GARMIN_BACKUP_PYTHON = "C:\Python27\python.exe"
 GARMIN_BACKUP_FOLDER = "C:\Users\godin\Projects\garmin-backup"
 GARMIN_BACKUP_SCRIPT = "C:\Users\godin\Projects\garminexport\garminbackup.py"
+PREPARATION_TITLE = 'Paris Marathon'
 PREPARATION_GOAL = 1000  # kilometers
 PREPARATION_START = datetime.datetime(2018, 9, 1)
 PREPARATION_END = datetime.datetime(2019, 4, 1)
 
 
 def update_activities():
-    with open(GARMIN_CREDENTIALS_FILE) as f:
-        credentials = json.load(f)
+    with open(CREDENTIALS_FILE) as credentials_file:
+        credentials = json.load(credentials_file)
         print subprocess.check_output([GARMIN_BACKUP_PYTHON,
                                        GARMIN_BACKUP_SCRIPT,
-                                       '--password=' + credentials['password'],
+                                       '--password=' + credentials['garmin']['password'],
                                        '--backup-dir=' + GARMIN_BACKUP_FOLDER,
-                                       credentials['username']],
+                                       credentials['garmin']['username']],
                                       stderr=subprocess.STDOUT,
                                       universal_newlines=True)
 
 
-def get_remaining_kilometers():
-    kilometers = PREPARATION_GOAL
+def get_kilometers_done(preparation_start, preparation_end):
+    kilometers = 0
     for filename in glob.glob(GARMIN_BACKUP_FOLDER + os.path.sep + "201[89]*summary.json"):
         with open(filename) as f:
             data = json.load(f)
             if data['activityTypeDTO']['typeKey'] != 'running':
                 continue
             datetime_activity = dateutil.parser.parse(data['summaryDTO']['startTimeGMT'])
-            if PREPARATION_START <= datetime_activity <= PREPARATION_END:
+            if preparation_start <= datetime_activity <= preparation_end:
                 activity_kilometers = data['summaryDTO']['distance'] / 1000
-                kilometers -= activity_kilometers
+                kilometers += activity_kilometers
     return kilometers
 
 
-def create_image(kilometers, per_month):
-    img = Image.new('RGB', (900, 200), "white")
+def create_image(text):
+    img = Image.new('RGB', (450, 100), "white")
     draw = ImageDraw.Draw(img)
-    text = create_text(kilometers, per_month)
-    draw.text((70, 70),
+    draw.text((35, 35),
               text,
-              font=ImageFont.truetype("arial", 40),
+              font=ImageFont.truetype("arial", 20),
               fill="red")
-    img.save("output.jpg", "JPEG")
+    img.save(OUTPUT_IMAGE, "JPEG")
 
 
-def create_text(kilometers, per_month):
-    return "{0} kilometers remaining ({1} per month)".format(int(round(remaining_kilometers)),
-                                                             int(round(per_month_remaining)))
+def send_mail(subject, text):
+    with open(CREDENTIALS_FILE) as credentials_file:
+        credentials = json.load(credentials_file)
+        msg = MIMEMultipart()
+        msg['Subject'] = subject
+        msg['From'] = credentials['mail']['username']
+        msg['To'] = credentials['mail']['username']
+        msg_text = MIMEText('<b>%s</b><br><img src="cid:%s"><br>' % (text, OUTPUT_IMAGE), 'html')
+        msg.attach(msg_text)
+        with open(OUTPUT_IMAGE, 'rb') as jpeg:
+            img = MIMEImage(jpeg.read())
+            img.add_header('Content-ID', '<{}>'.format(OUTPUT_IMAGE))
+            msg.attach(img)
+        s = smtplib.SMTP(timeout=30)
+        s.connect(credentials['mail']['smtphost'])
+        try:
+            s.ehlo()
+            s.starttls()
+            s.ehlo()
+            s.login(credentials['mail']['username'], credentials['mail']['password'])
+            s.sendmail(credentials['mail']['username'], credentials['mail']['username'], msg.as_string())
+        finally:
+            s.quit()
 
 
 if __name__ == "__main__":
-    #update_activities()
-    remaining_kilometers = get_remaining_kilometers()
+    # update_activities()
+    remaining_kilometers = PREPARATION_GOAL - get_kilometers_done(PREPARATION_START, PREPARATION_END)
     remaining_days = (PREPARATION_END - datetime.datetime.now()).days
     per_month_remaining = remaining_kilometers / remaining_days * 30.0
-    print create_text(remaining_days, per_month_remaining)
-    create_image(remaining_kilometers, per_month_remaining)
+    status_text = "{0} kilometers remaining ({1} per month)".format(int(round(remaining_kilometers)),
+                                                                    int(round(per_month_remaining)))
+    remaining_text = PREPARATION_TITLE + ": {0} days remaining".format(remaining_days)
+    create_image(status_text)
+    send_mail(remaining_text, status_text)
