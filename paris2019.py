@@ -5,6 +5,8 @@ import os.path
 import dateutil.parser
 
 GARMIN_BACKUP_FOLDER = "C:\Users\godin\Projects\garmin-backup"
+PREPARATION_START = datetime.datetime(2018, 9, 1)
+MARATHON_DATE = datetime.datetime(2019, 4, 13)
 
 if __name__ == "__main__":
     for filename in glob.glob(GARMIN_BACKUP_FOLDER + os.path.sep + "201[78]*summary.json"):
@@ -13,7 +15,5 @@ if __name__ == "__main__":
             if data['activityTypeDTO']['typeKey'] != 'running':
                 continue
             datetime_activity = dateutil.parser.parse(data['summaryDTO']['startTimeGMT'])
-            datetime_low = datetime.datetime(2018, 9, 1)
-            datetime_high = datetime.datetime(2019, 4, 13)
-            if datetime_low <= datetime_activity <= datetime_high:
+            if PREPARATION_START <= datetime_activity < MARATHON_DATE:
                 print "{0}: {1}".format(datetime_activity, data['summaryDTO']['distance'])
